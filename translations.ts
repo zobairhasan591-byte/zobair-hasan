@@ -14,6 +14,7 @@ export const translations = {
     copied: "Copied!",
     shareViaApp: "Share via App",
     close: "Close",
+    installApp: "Install App",
     
     // Meals
     navMeals: "Meals",
@@ -72,6 +73,7 @@ export const translations = {
     copied: "কপি হয়েছে!",
     shareViaApp: "অ্যাপ দিয়ে শেয়ার",
     close: "বন্ধ করুন",
+    installApp: "অ্যাপ ইন্সটল করুন",
 
     // Meals
     navMeals: "মিল",

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Deposit, Expense, MealMap, ViewState, Language } from './types';
 import { Meals } from './components/Meals';
 import { Finances } from './components/Finances';
-import { UtensilsCrossed, Wallet, Globe, WifiOff } from 'lucide-react';
+import { UtensilsCrossed, Wallet, Globe, WifiOff, Download } from 'lucide-react';
 import { translations } from './translations';
 
 const App: React.FC = () => {
@@ -14,6 +14,9 @@ const App: React.FC = () => {
     return (saved as Language) || 'en';
   });
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   const [deposits, setDeposits] = useState<Deposit[]>(() => {
     const saved = localStorage.getItem('deposits');
@@ -51,15 +54,25 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('mealMap', JSON.stringify(mealMap)), [mealMap]);
   useEffect(() => localStorage.setItem('expenseCategories', JSON.stringify(expenseCategories)), [expenseCategories]);
 
-  // --- Offline Detection ---
+  // --- Offline Detection & Install Prompt ---
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
 
@@ -68,6 +81,18 @@ const App: React.FC = () => {
 
   const toggleLanguage = () => {
     setLanguage(prev => prev === 'en' ? 'bn' : 'en');
+  };
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    // Show the install prompt
+    deferredPrompt.prompt();
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    // Optionally, send analytics event with outcome of user choice
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
   };
 
   // --- Actions ---
@@ -141,7 +166,16 @@ const App: React.FC = () => {
         <div>
           <h1 className="text-xl font-black text-indigo-600 tracking-tight">Expense<span className="text-slate-800">Tracker</span></h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+           {deferredPrompt && (
+             <button
+               onClick={handleInstallClick}
+               className="flex items-center gap-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
+             >
+               <Download className="h-3 w-3" />
+               {t.installApp}
+             </button>
+           )}
            {isOffline && (
              <div className="flex items-center gap-1 bg-red-100 text-red-600 px-2 py-1 rounded-md text-[10px] font-bold">
                <WifiOff className="h-3 w-3" />
