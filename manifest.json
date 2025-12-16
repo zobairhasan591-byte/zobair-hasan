@@ -1,6 +1,6 @@
 {
-  "short_name": "MessManager",
-  "name": "Mess Manager",
+  "short_name": "ExpenseTracker",
+  "name": "Personal Expense Tracker",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/5501/5501375.png",

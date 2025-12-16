@@ -13,7 +13,7 @@ const parsePromptWithGemini = async (text: string, members: Member[]): Promise<a
   const today = new Date().toISOString().split('T')[0];
 
   const systemInstruction = `
-    You are a helpful assistant for a shared living "Mess Manager" app.
+    You are a helpful assistant for a "Personal Expense Tracker" app.
     Your job is to parse natural language user input into structured data for either a "Deposit" or an "Expense".
     The user input might be in English or Bangla (Bengali). You should understand both.
 

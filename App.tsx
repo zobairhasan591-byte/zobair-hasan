@@ -1,26 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Member, Deposit, Expense, MealMap, ViewState, Stats, MealEntry, Language } from './types';
-import { Dashboard } from './components/Dashboard';
+import React, { useState, useEffect } from 'react';
+import { Deposit, Expense, MealMap, ViewState, Language } from './types';
 import { Meals } from './components/Meals';
 import { Finances } from './components/Finances';
-import { Members } from './components/Members';
-import { SmartAssistant } from './components/SmartAssistant';
-import { LayoutDashboard, UtensilsCrossed, Wallet, Users, Sparkles, Globe } from 'lucide-react';
+import { UtensilsCrossed, Wallet, Globe, WifiOff } from 'lucide-react';
 import { translations } from './translations';
 
 const App: React.FC = () => {
   // --- State Management ---
-  const [view, setView] = useState<ViewState>(ViewState.DASHBOARD);
+  // Default view changed to FINANCES
+  const [view, setView] = useState<ViewState>(ViewState.FINANCES);
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem('language');
     return (saved as Language) || 'en';
   });
-  
-  // Load initial state from local storage or defaults
-  const [members, setMembers] = useState<Member[]>(() => {
-    const saved = localStorage.getItem('members');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
   const [deposits, setDeposits] = useState<Deposit[]>(() => {
     const saved = localStorage.getItem('deposits');
@@ -31,18 +24,44 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('expenses');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Default empty categories
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('expenseCategories');
+    return saved ? JSON.parse(saved) : []; 
+  });
   
   const [mealMap, setMealMap] = useState<MealMap>(() => {
     const saved = localStorage.getItem('mealMap');
-    return saved ? JSON.parse(saved) : {};
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const firstKey = Object.keys(parsed)[0];
+      if (firstKey && parsed[firstKey] && typeof parsed[firstKey].breakfast === 'undefined') {
+        return {}; 
+      }
+      return parsed;
+    }
+    return {};
   });
 
   // --- Persistence Effects ---
   useEffect(() => localStorage.setItem('language', language), [language]);
-  useEffect(() => localStorage.setItem('members', JSON.stringify(members)), [members]);
   useEffect(() => localStorage.setItem('deposits', JSON.stringify(deposits)), [deposits]);
   useEffect(() => localStorage.setItem('expenses', JSON.stringify(expenses)), [expenses]);
   useEffect(() => localStorage.setItem('mealMap', JSON.stringify(mealMap)), [mealMap]);
+  useEffect(() => localStorage.setItem('expenseCategories', JSON.stringify(expenseCategories)), [expenseCategories]);
+
+  // --- Offline Detection ---
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // --- Translations ---
   const t = translations[language];
@@ -52,15 +71,6 @@ const App: React.FC = () => {
   };
 
   // --- Actions ---
-  const addMember = (member: Omit<Member, 'id'>) => {
-    const newMember = { ...member, id: crypto.randomUUID() };
-    setMembers([...members, newMember]);
-  };
-
-  const deleteMember = (id: string) => {
-    setMembers(prev => prev.filter(m => m.id !== id));
-  };
-
   const addDeposit = (deposit: Omit<Deposit, 'id'>) => {
     const newDeposit = { ...deposit, id: crypto.randomUUID() };
     setDeposits([...deposits, newDeposit]);
@@ -79,73 +89,36 @@ const App: React.FC = () => {
     setExpenses(expenses.filter(e => e.id !== id));
   };
 
-  const updateMeal = (date: string, memberId: string, type: keyof MealEntry) => {
+  const addExpenseCategory = (category: string) => {
+    if (!expenseCategories.includes(category)) {
+      setExpenseCategories([...expenseCategories, category]);
+    }
+  };
+
+  const deleteExpenseCategory = (category: string) => {
+    // Force a new array reference to ensure re-render
+    setExpenseCategories(prev => prev.filter(c => c !== category));
+  };
+
+  const editExpenseCategory = (oldCategory: string, newCategory: string, updateHistory: boolean) => {
+    setExpenseCategories(prev => prev.map(c => c === oldCategory ? newCategory : c));
+    
+    if (updateHistory) {
+      setExpenses(prev => prev.map(e => e.items === oldCategory ? { ...e, items: newCategory } : e));
+    }
+  };
+
+  const updateMeal = (date: string, type: keyof import('./types').MealEntry) => {
     setMealMap(prev => {
-      const dateEntries = prev[date] || {};
-      const memberEntry = dateEntries[memberId] || { breakfast: true, lunch: true, dinner: true };
-      
-      const newMemberEntry = { ...memberEntry, [type]: !memberEntry[type] };
-      
+      const currentEntry = prev[date] || { breakfast: true, lunch: true, dinner: true };
       return {
         ...prev,
         [date]: {
-          ...dateEntries,
-          [memberId]: newMemberEntry
+          ...currentEntry,
+          [type]: !currentEntry[type]
         }
       };
     });
-  };
-
-  // --- Calculations ---
-  const stats = useMemo<Stats>(() => {
-    const totalDeposits = deposits.reduce((sum, d) => sum + d.amount, 0);
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const cashInHand = totalDeposits - totalExpenses;
-
-    let totalMealUnits = 0;
-    
-    // Calculate total meal units across all history
-    Object.values(mealMap).forEach(dateEntry => {
-      Object.values(dateEntry).forEach((entry: MealEntry) => {
-        if (entry.breakfast) totalMealUnits += 0.5;
-        if (entry.lunch) totalMealUnits += 1.0;
-        if (entry.dinner) totalMealUnits += 1.0;
-      });
-    });
-    
-    const mealRate = totalMealUnits > 0 ? totalExpenses / totalMealUnits : 0;
-
-    return {
-      totalDeposits,
-      totalExpenses,
-      cashInHand,
-      totalMealUnits,
-      mealRate
-    };
-  }, [deposits, expenses, mealMap]);
-
-  const calculateMemberBalance = (memberId: string): number => {
-    // 1. Calculate Member's Total Units
-    let memberUnits = 0;
-    Object.values(mealMap).forEach(dateEntry => {
-      const entry = dateEntry[memberId];
-      if (entry) {
-        if (entry.breakfast) memberUnits += 0.5;
-        if (entry.lunch) memberUnits += 1.0;
-        if (entry.dinner) memberUnits += 1.0;
-      }
-    });
-
-    // 2. Calculate Cost
-    const cost = memberUnits * stats.mealRate;
-
-    // 3. Calculate Total Deposit by Member
-    const memberDeposit = deposits
-      .filter(d => d.memberId === memberId)
-      .reduce((sum, d) => sum + d.amount, 0);
-
-    // 4. Return Balance (Cost - Deposit)
-    return cost - memberDeposit;
   };
 
   // --- Navigation Item Component ---
@@ -166,9 +139,15 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
         <div>
-          <h1 className="text-xl font-black text-indigo-600 tracking-tight">Mess<span className="text-slate-800">Manager</span></h1>
+          <h1 className="text-xl font-black text-indigo-600 tracking-tight">Expense<span className="text-slate-800">Tracker</span></h1>
         </div>
         <div className="flex items-center gap-3">
+           {isOffline && (
+             <div className="flex items-center gap-1 bg-red-100 text-red-600 px-2 py-1 rounded-md text-[10px] font-bold">
+               <WifiOff className="h-3 w-3" />
+               {t.offlineMode}
+             </div>
+           )}
            <button 
             onClick={toggleLanguage} 
             className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
@@ -176,57 +155,33 @@ const App: React.FC = () => {
             <Globe className="h-3 w-3" />
             {language === 'en' ? 'EN' : 'বাংলা'}
           </button>
-          <div className="h-8 w-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">
-            MM
-          </div>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="p-4 min-h-[calc(100vh-140px)]">
-        {view === ViewState.DASHBOARD && (
-          <Dashboard 
-            stats={stats} 
-            members={members} 
-            calculateMemberBalance={calculateMemberBalance}
-            t={t}
-          />
-        )}
-        {view === ViewState.MEALS && (
-          <Meals 
-            members={members} 
-            mealMap={mealMap} 
-            updateMeal={updateMeal}
-            t={t}
-            language={language}
-          />
-        )}
         {view === ViewState.FINANCES && (
           <Finances 
             deposits={deposits}
             expenses={expenses}
-            members={members}
             onAddDeposit={addDeposit}
             onAddExpense={addExpense}
             onDeleteDeposit={deleteDeposit}
             onDeleteExpense={deleteExpense}
+            expenseCategories={expenseCategories}
+            onAddCategory={addExpenseCategory}
+            onDeleteCategory={deleteExpenseCategory}
+            onEditCategory={editExpenseCategory}
             t={t}
+            language={language}
           />
         )}
-        {view === ViewState.MEMBERS && (
-          <Members 
-            members={members} 
-            onAddMember={addMember} 
-            onDeleteMember={deleteMember}
+        {view === ViewState.MEALS && (
+          <Meals 
+            mealMap={mealMap} 
+            updateMeal={updateMeal}
             t={t}
-          />
-        )}
-        {view === ViewState.AI_ASSISTANT && (
-          <SmartAssistant 
-            members={members}
-            onAddDeposit={addDeposit}
-            onAddExpense={addExpense}
-            t={t}
+            language={language}
           />
         )}
       </main>
@@ -234,23 +189,9 @@ const App: React.FC = () => {
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe z-40 max-w-md mx-auto">
         <div className="flex justify-around items-center">
-          <NavItem target={ViewState.DASHBOARD} icon={LayoutDashboard} label={t.navHome} />
-          <NavItem target={ViewState.MEALS} icon={UtensilsCrossed} label={t.navMeals} />
-          {/* Central AI Button */}
-          <div className="relative -top-5">
-            <button 
-              onClick={() => setView(ViewState.AI_ASSISTANT)}
-              className={`h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-transform ${
-                view === ViewState.AI_ASSISTANT 
-                ? 'bg-indigo-700 scale-110 ring-4 ring-indigo-100' 
-                : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
-            >
-              <Sparkles className="h-6 w-6 text-white" />
-            </button>
-          </div>
+          {/* Swapped Order: Money first */}
           <NavItem target={ViewState.FINANCES} icon={Wallet} label={t.navMoney} />
-          <NavItem target={ViewState.MEMBERS} icon={Users} label={t.navMembers} />
+          <NavItem target={ViewState.MEALS} icon={UtensilsCrossed} label={t.navMeals} />
         </div>
       </nav>
     </div>
