@@ -1,0 +1,5 @@
+{
+  "name": "Mess Manager",
+  "description": "A comprehensive mess management application for shared living. Track meals, expenses, and deposits with an automated dashboard and AI-powered quick entry.",
+  "requestFramePermissions": []
+}
